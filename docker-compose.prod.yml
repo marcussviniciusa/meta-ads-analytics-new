@@ -1,0 +1,102 @@
+version: '3.8'
+
+networks:
+  traefik-public:
+    external: true
+  internal:
+    driver: bridge
+
+services:
+  postgres:
+    image: postgres:14
+    container_name: meta-ads-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Marcus1911!!Marcus}
+      POSTGRES_DB: ${POSTGRES_DB:-speedfunnels_v2}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - internal
+    labels:
+      - "traefik.enable=false"
+
+  redis:
+    image: redis:alpine
+    container_name: meta-ads-redis
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD:-Marcus1911Marcus}
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+    labels:
+      - "traefik.enable=false"
+
+  api:
+    build:
+      context: ./backend
+    container_name: meta-ads-api
+    restart: always
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      NODE_ENV: production
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Marcus1911!!Marcus}
+      POSTGRES_DB: ${POSTGRES_DB:-speedfunnels_v2}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-Marcus1911Marcus}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      META_APP_ID: ${META_APP_ID}
+      META_APP_SECRET: ${META_APP_SECRET}
+      JWT_SECRET: ${JWT_SECRET:-45aab33419d55426e0276078dd8b16eac990c163afab0f20645d976cd92c80eb96}
+      FRONTEND_URL: https://${DOMAIN:-metaads.speedfunnels.marcussviniciusa.cloud}
+    networks:
+      - traefik-public
+      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api-secure.entrypoints=websecure"
+      - "traefik.http.routers.api-secure.rule=Host(`apispeedfunnels.marcussviniciusa.cloud`)"
+      - "traefik.http.routers.api-secure.tls=true"
+      - "traefik.http.services.api-service.loadbalancer.server.port=8080"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST,DELETE"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolallowheaders=Origin,X-Requested-With,Content-Type,Accept,Authorization"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolalloworiginlist=https://speedfunnels.marcussviniciusa.cloud"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.api-cors.headers.addvaryheader=true"
+      - "traefik.http.routers.api-secure.middlewares=api-cors"
+      - "traefik.docker.network=traefik-public"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - REACT_APP_API_URL=https://apispeedfunnels.marcussviniciusa.cloud
+    container_name: meta-ads-frontend
+    restart: always
+    depends_on:
+      - api
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend-secure.entrypoints=websecure"
+      - "traefik.http.routers.frontend-secure.rule=Host(`${DOMAIN:-metaads.speedfunnels.marcussviniciusa.cloud}`)"
+      - "traefik.http.routers.frontend-secure.tls=true"
+      - "traefik.http.services.frontend-service.loadbalancer.server.port=80"
+      - "traefik.http.middlewares.security-headers.headers.forcestsheader=true"
+      - "traefik.http.middlewares.security-headers.headers.stsincludesubdomains=true"
+      - "traefik.http.middlewares.security-headers.headers.stsseconds=31536000"
+      - "traefik.http.routers.frontend-secure.middlewares=security-headers"
+      - "traefik.docker.network=traefik-public"
+
+volumes:
+  postgres_data:
+  redis_data:

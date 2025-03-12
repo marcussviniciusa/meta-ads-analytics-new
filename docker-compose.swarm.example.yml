@@ -1,0 +1,77 @@
+version: '3.7'
+
+networks:
+  network_public:
+    external: true
+    name: network_public
+
+services:
+  api:
+    image: marcussviniciusa/meta-ads-backend:v1.0.7
+    build:
+      context: ./backend
+    restart: always
+    environment:
+      NODE_ENV: production
+      POSTGRES_USER: seu_usuario_postgres
+      POSTGRES_PASSWORD: sua_senha_segura_postgres
+      POSTGRES_DB: seu_banco_de_dados
+      POSTGRES_HOST: seu_host_postgres
+      POSTGRES_PORT: 5432
+      REDIS_PASSWORD: sua_senha_segura_redis
+      REDIS_HOST: seu_host_redis
+      REDIS_PORT: 6379
+      META_APP_ID: seu_app_id_meta
+      META_APP_SECRET: seu_app_secret_meta
+      GOOGLE_CLIENT_ID: seu_client_id_google.apps.googleusercontent.com
+      GOOGLE_CLIENT_SECRET: seu_client_secret_google
+      JWT_SECRET: sua_chave_jwt_secreta_e_longa
+      FRONTEND_URL: https://seu-dominio.exemplo.com
+    networks:
+      - network_public
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=network_public"
+        - "traefik.http.routers.api-speedfunnels.rule=Host(`api.seu-dominio.exemplo.com`)"
+        - "traefik.http.routers.api-speedfunnels.entrypoints=websecure"
+        - "traefik.http.routers.api-speedfunnels.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.api-speedfunnels.loadbalancer.server.port=8080"
+        - "traefik.http.middlewares.api-speedfunnels-cors.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST,DELETE"
+        - "traefik.http.middlewares.api-speedfunnels-cors.headers.accesscontrolallowheaders=Origin,X-Requested-With,Content-Type,Accept,Authorization"
+        - "traefik.http.middlewares.api-speedfunnels-cors.headers.accesscontrolalloworiginlist=https://seu-dominio.exemplo.com"
+        - "traefik.http.middlewares.api-speedfunnels-cors.headers.accesscontrolmaxage=100"
+        - "traefik.http.middlewares.api-speedfunnels-cors.headers.addvaryheader=true"
+        - "traefik.http.routers.api-speedfunnels.middlewares=api-speedfunnels-cors"
+
+  frontend:
+    image: marcussviniciusa/meta-ads-frontend:v1.0.6
+    build:
+      context: ./frontend
+      args:
+        - REACT_APP_API_URL=https://api.seu-dominio.exemplo.com/api
+    restart: always
+    networks:
+      - network_public
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=network_public"
+        - "traefik.http.routers.frontend-speedfunnels.rule=Host(`seu-dominio.exemplo.com`)"
+        - "traefik.http.routers.frontend-speedfunnels.entrypoints=websecure"
+        - "traefik.http.routers.frontend-speedfunnels.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.frontend-speedfunnels.loadbalancer.server.port=80"
+        - "traefik.http.middlewares.security-headers-speedfunnels.headers.forcestsheader=true"
+        - "traefik.http.middlewares.security-headers-speedfunnels.headers.stsincludesubdomains=true"
+        - "traefik.http.middlewares.security-headers-speedfunnels.headers.stsseconds=31536000"
+        - "traefik.http.routers.frontend-speedfunnels.middlewares=security-headers-speedfunnels"
